@@ -6,7 +6,14 @@ use WWW::Curl::Easy;
 use Getopt::Long;
 use POSIX qw/strftime/;
 use Config::Simple;
+use Pod::Usage;
 
+=pod 
+
+=head1 puddlejumper
+puddlejumper - switch between mining pools based on data from whattomine.com
+
+=cut
 
 # Default Options
 my $url                = 'https://whattomine.com/coins.json'; 
@@ -16,15 +23,61 @@ my $check_timer        = 10; # Minutes
 my $cookies_file       = 'cookies.txt';
 my $cfg_file           = 'puddlejumper.cfg';
 my $test_mode	       = 'no';
+my $missing_log        = 'missing.txt';
+my $work_log           = 'work_log.csv';
+
 
 # Read from config file
 my $config = new Config::Simple($cfg_file);
 
 # Read from command line flags
-GetOptions ('config=s' => \$url,
+GetOptions ('url=s' => \$url,
 	    'threshhold=s' => \$threshhold,
             'timer=s' => \$check_timer,
             'test:s'=>\$test_mode);
+=pod
+=head1 SYNOPSIS
+puddlejumper [options] 
+ Options:
+    --help		This help mesage
+    --url		Nicehash URL to save cookie
+    --threshhold	Percentage diffference required to switch coins
+    --parameter		Parameter to sort whattomine data on
+    --timer          	How often in minutes to check for changes
+    --cookie		whattomine cookie file
+    --config		configuration file
+    --test 		Test coin configuration
+    --missing_log	Log file for missing coins info
+    --work_log 		Log file for coins mined
+=head1 OPTIONS
+=over 4
+=item B<--url>
+    URL should be the url you get from whattomine.com after configuring your hashrates and clicking calculate here. Wrap in quotes.
+=item B<--timer>
+    This is time in minutes between updates from whattomine.com.  Checking more often then 3 minutes is pointless.
+    Defaulit: 10
+=item B<--parameter>
+    The parameter from whattomine json data to sort on.  Not all of the valid values will produce usefull results.
+    Valid values:
+    id, tag, algorithm, block_time, block_reward, block_reward24, last_block, difficulty, difficulty24, nethash, exchange_rate, exchange_rate24, exchange_rate_vol, exchange_rate_curr, market_cap, estimated_rewards, estimated_rewards24, btc_revenue, btc_revenue24, profitability, profitability24
+    Default: btc_revenue
+=item B<--threshhold>
+    Switch to the new top algorithm if the sort field is differnt by this percentage.
+    Default: 10
+=item B<--cookie>
+    The configured cookie file to use.
+    Default: cookies.txt
+=item B<--config>
+    The configuration file to use.
+    Default: puddlejumper.cfg
+=item B<--test [coin]>
+    Test coin or all coins for an amount of time spesified by --timer. Spesify coin to test, or leave blank to test all coins.
+=item B<--missing_log>
+    Log file to log coins that were bypassed do to missing configuration.
+=item B<--work_log>
+    Log file to log what coins have been mined.
+=back
+=cut
 
 
 if ($test_mode ne 'no') {
@@ -55,6 +108,10 @@ while (1) {
 	if ($url ne 'https://whattomine.com/coins.json') {
 		print "Cookie file created/update as $cookies_file.\n";
 		exit (0);
+	}
+	# Check to make sure there is a cookie file before proceeding
+	if ( ! -e $cookies_file) {
+		print "Please run setup before continuing\n";
 	}
 
 	# Looking at the results...
@@ -155,3 +212,9 @@ sub test_coins {
 	}
 }
 
+
+=back
+=head1 DESCRIPTION
+B<This program> will read the given input file(s) and do something
+useful with the contents thereof.
+=cut
