@@ -16,31 +16,42 @@ puddlejumper - switch between mining pools based on data from whattomine.com
 =cut
 
 # Default Options
-my $url                = 'https://whattomine.com/coins.json'; 
 my $threshhold         = 10; # percentage difference
 my $sort_parameter     = 'btc_revenue';
 my $check_timer        = 10; # Minutes
-my $cookies_file       = 'cookies.txt';
 my $cfg_file           = 'puddlejumper.cfg';
+
 my $test_mode	       = 'no';
 my $missing_log        = 'missing.txt';
 my $work_log           = 'work_log.csv';
+my $url;
 
 
 # Read from config file
 my $config = new Config::Simple($cfg_file);
 
+# Fail if the whattomine url is not configured in the 
+if (defined $config->param("url")) {
+	$url                = $config->param("url");
+	$url =~ s/coins/coins.json/;
+}
+else {
+	print "Please configure the url option in the config file\n";
+	exit(1);
+}
+
 # Read from command line flags
-GetOptions ('url=s' => \$url,
-	    'threshhold=s' => \$threshhold,
+GetOptions ('threshhold=s' => \$threshhold,
             'timer=s' => \$check_timer,
             'test:s'=>\$test_mode);
+
 =pod
+
 =head1 SYNOPSIS
 puddlejumper [options] 
  Options:
     --help		This help mesage
-    --url		Nicehash URL to save cookie
+    --url		--depreciated-- Nicehash URL to save cookie
     --threshhold	Percentage diffference required to switch coins
     --parameter		Parameter to sort whattomine data on
     --timer          	How often in minutes to check for changes
@@ -51,7 +62,7 @@ puddlejumper [options]
     --work_log 		Log file for coins mined
 =head1 OPTIONS
 =over 4
-=item B<--url>
+=item B<--url> --Depreciated--
     URL should be the url you get from whattomine.com after configuring your hashrates and clicking calculate here. Wrap in quotes.
 =item B<--timer>
     This is time in minutes between updates from whattomine.com.  Checking more often then 3 minutes is pointless.
@@ -77,6 +88,7 @@ puddlejumper [options]
 =item B<--work_log>
     Log file to log what coins have been mined.
 =back
+
 =cut
 
 
@@ -87,8 +99,6 @@ if ($test_mode ne 'no') {
 
 # Setup curl
 my $curl = WWW::Curl::Easy->new();
-$curl->setopt(CURLOPT_COOKIEFILE, $cookies_file ); 
-$curl->setopt(CURLOPT_COOKIEJAR, $cookies_file ); 
 $curl->setopt(CURLOPT_HEADER,0);
 $curl->setopt(CURLOPT_URL, $url);
 
@@ -104,15 +114,6 @@ while (1) {
 	# Starts the actual request
 	my $retcode = $curl->perform;
 
-	# Don't process further if we're not dealing with JSON
-	if ($url ne 'https://whattomine.com/coins.json') {
-		print "Cookie file created/update as $cookies_file.\n";
-		exit (0);
-	}
-	# Check to make sure there is a cookie file before proceeding
-	if ( ! -e $cookies_file) {
-		print "Please run setup before continuing\n";
-	}
 
 	# Looking at the results...
 	if ($retcode == 0) {
@@ -149,10 +150,11 @@ while (1) {
 				$current_coin = $coin;
 			}
 			else {
-			       	print "$time -- Continue mining $current_coin at (btc):" .$coins->{$current_coin}->{'btc_revenue'} . "\n";
+			       	print "$time -- Continue mining $current_coin at (btc):" .$coins->{$current_coin}->{'btc_revenue'} . ".  Difference less then threshhold.\n";
 			}
 
 		}
+		print "$time -- Continue mining $current_coin at (btc):" .$coins->{$current_coin}->{'btc_revenue'} . ".  Currently most profitable.\n";
 	} 
 	else {
 		# Error code, type of error, error message
@@ -211,10 +213,3 @@ sub test_coins {
 		kill 1, $PID;
 	}
 }
-
-
-=back
-=head1 DESCRIPTION
-B<This program> will read the given input file(s) and do something
-useful with the contents thereof.
-=cut
