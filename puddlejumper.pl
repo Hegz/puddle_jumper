@@ -15,92 +15,141 @@ puddlejumper - switch between mining pools based on data from whattomine.com
 
 =cut
 
-# Default Options
-my $threshhold         = 10; # percentage difference
-my $sort_parameter     = 'btc_revenue';
-my $check_timer        = 10; # Minutes
-my $cfg_file           = 'puddlejumper.cfg';
+my $man = 0;
+my $help = 0;
+my $cfg_file  = 'puddlejumper.cfg';
+my $cmd_line;
+GetOptions(	'config=s' 	=> \$cfg_file,
+		'threshhold=s'	=> \$cmd_line->{threshhold},
+		'parameter=s'	=> \$cmd_line->{parameter},
+            	'timer=s'	=> \$cmd_line->{check_timer},
+            	'test:s'	=> \$cmd_line->{test_mode},
+		'missing_log=s'	=> \$cmd_line->{missing_log},
+		'work_log=s'	=> \$cmd_line->{work_log},
+		'help|?'	=> \$help, 
+		'man'		=> \$man,
+);
 
-my $test_mode	       = 'no';
-my $missing_log        = 'missing.txt';
-my $work_log           = 'work_log.csv';
-my $url;
-
+pod2usage(2) if $help;
+pod2usage(-exitval => 0, -verbose => 2) if $man;
 
 # Read from config file
+if (! -e $cfg_file) {
+	print "the configuration file $cfg_file cannot be found.\n";
+	exit 1;
+}
 my $config = new Config::Simple($cfg_file);
 
-# Fail if the whattomine url is not configured in the 
-if (defined $config->param("url")) {
-	$url                = $config->param("url");
-	$url =~ s/coins/coins.json/;
-}
-else {
-	print "Please configure the url option in the config file\n";
-	exit(1);
+# Default Options
+my $Options = { threshhold 	=> 10,  
+		sort_parameter 	=> 'btc_revenue',
+		check_timer 	=> 10,  
+		test_mode 	=> 'no'
+	};
+
+# Override default options with config file
+my $Global = $config->param(-block=>'Global');
+for (keys %$Global) {
+	$Options->{$_} = $Global->{$_};
 }
 
-# Read from command line flags
-GetOptions ('threshhold=s' => \$threshhold,
-            'timer=s' => \$check_timer,
-            'test:s'=>\$test_mode);
+# Override from command line
+for (keys %$cmd_line) {
+	if ( defined $cmd_line->{$_} ) {
+		$Options->{$_} = $cmd_line->{$_};
+	}
+}
+
+# Display help messages
 
 =pod
 
 =head1 SYNOPSIS
-puddlejumper [options] 
+
+USAGE:puddlejumper [options] 
+
+Automate switching between mining coins based on data from whattomine.com
+
  Options:
     --help		This help mesage
-    --url		--depreciated-- Nicehash URL to save cookie
+    --man               Explicit help message
+    --url		Nicehash URL to save cookie
     --threshhold	Percentage diffference required to switch coins
     --parameter		Parameter to sort whattomine data on
     --timer          	How often in minutes to check for changes
-    --cookie		whattomine cookie file
     --config		configuration file
     --test 		Test coin configuration
     --missing_log	Log file for missing coins info
     --work_log 		Log file for coins mined
+
 =head1 OPTIONS
+
+Options can be set in the config file
+
 =over 4
-=item B<--url> --Depreciated--
+
+=item B<--url> 
+
     URL should be the url you get from whattomine.com after configuring your hashrates and clicking calculate here. Wrap in quotes.
+
 =item B<--timer>
+
     This is time in minutes between updates from whattomine.com.  Checking more often then 3 minutes is pointless.
     Defaulit: 10
+
 =item B<--parameter>
+
     The parameter from whattomine json data to sort on.  Not all of the valid values will produce usefull results.
     Valid values:
-    id, tag, algorithm, block_time, block_reward, block_reward24, last_block, difficulty, difficulty24, nethash, exchange_rate, exchange_rate24, exchange_rate_vol, exchange_rate_curr, market_cap, estimated_rewards, estimated_rewards24, btc_revenue, btc_revenue24, profitability, profitability24
+    id, tag, algorithm, block_time, block_reward, block_reward24, last_block, difficulty, difficulty24, nethash, 
+    exchange_rate, exchange_rate24, exchange_rate_vol, exchange_rate_curr, market_cap, estimated_rewards, 
+    estimated_rewards24, btc_revenue, btc_revenue24, profitability, profitability24
     Default: btc_revenue
+
 =item B<--threshhold>
+
     Switch to the new top algorithm if the sort field is differnt by this percentage.
     Default: 10
-=item B<--cookie>
-    The configured cookie file to use.
-    Default: cookies.txt
+
 =item B<--config>
+
     The configuration file to use.
     Default: puddlejumper.cfg
+
 =item B<--test [coin]>
+
     Test coin or all coins for an amount of time spesified by --timer. Spesify coin to test, or leave blank to test all coins.
+
 =item B<--missing_log>
+
     Log file to log coins that were bypassed do to missing configuration.
+
 =item B<--work_log>
+
     Log file to log what coins have been mined.
+
 =back
 
 =cut
 
+# Fail if the whattomine url is not configured  
+if ( !defined $Options->{url}) {
+	print "A whattomine URL is required for use of this script.\n";
+	exit(1);
+}
+else {
+	$Options->{url} =~ s/coins/coins.json/;
+}
 
-if ($test_mode ne 'no') {
-	test_coins($test_mode);
+if ($Options->{test_mode} ne 'no') {
+	test_coins($Options->{test_mode});
 	exit(0);
 }
 
 # Setup curl
 my $curl = WWW::Curl::Easy->new();
 $curl->setopt(CURLOPT_HEADER,0);
-$curl->setopt(CURLOPT_URL, $url);
+$curl->setopt(CURLOPT_URL, $Options->{url});
 
 my $current_coin;
 my $mining = '';
@@ -119,7 +168,7 @@ while (1) {
 	if ($retcode == 0) {
 		my $json = decode_json $response_body;
 		my $coins = $json->{'coins'};
-		my @sort_coins = sort { $coins->{$b}->{$sort_parameter} <=> $coins->{$a}->{$sort_parameter}} keys %{$coins};
+		my @sort_coins = sort { $coins->{$b}->{$Options->{sort_parameter}} <=> $coins->{$a}->{$Options->{sort_parameter}}} keys %{$coins};
 		
 		my $coin;
 		my $time = strftime('%Y-%m-%d %H:%M',localtime);
@@ -142,9 +191,9 @@ while (1) {
 		}
 
 		# Check for a switch to the new coin
-		elsif ($coins->{$coin}->{$sort_parameter} > $coins->{$current_coin}->{$sort_parameter}) {
+		elsif ($coins->{$coin}->{$Options->{sort_parameter}} > $coins->{$current_coin}->{$Options->{sort_parameter}}) {
 			# Check to see if we are above the threshold
-			if (1 - ($coins->{$current_coin}->{$sort_parameter} / $coins->{$coin}->{$sort_parameter}) > ($threshhold / 100)) {
+			if (1 - ($coins->{$current_coin}->{$Options->{sort_parameter}} / $coins->{$coin}->{$Options->{sort_parameter}}) > ($Options->{threshhold} / 100)) {
 			       	# We are above the threshhold, report a change
 			       	print "$time -- Switiching to $coin at (btc):" .$coins->{$coin}->{'btc_revenue'} . "\n";
 				$current_coin = $coin;
@@ -179,7 +228,7 @@ while (1) {
 			$mining = $current_coin;
 		}
 	}
-	sleep $check_timer * 60;
+	sleep $Options->{check_timer} * 60;
 }
 
 sub test_coins {
@@ -205,11 +254,11 @@ sub test_coins {
 				$cmd =~ s/<$_>/$account->{$_}/;
 			}
 
-			print "Testing $_ for $check_timer minutes.\n";
+			print "Testing $_ for $Options->{check_timer} minutes.\n";
 			print "$cmd\n\n";
 			exec ($cmd);
 		}
-		sleep $check_timer * 60;
+		sleep $Options->{check_timer} * 60;
 		kill 1, $PID;
 	}
 }
